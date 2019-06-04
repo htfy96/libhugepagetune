@@ -45,8 +45,12 @@ struct __attribute__((packed)) MemSamplingRecord {
 
 const int buf_sz = 0x400000;
 
-PerfOpenResult open_perf(const char* event, int tid) {
+void init_perf() 
+{
 	assert(PFM_SUCCESS == pfm_initialize());
+}
+
+PerfOpenResult open_perf(const char* event, int tid) {
 	pfm_perf_encode_arg_t encode_arg {};
 	perf_event_attr perf_attr {};
 	encode_arg.attr = &perf_attr;

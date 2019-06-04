@@ -18,6 +18,7 @@ int main()
 	int tid =gettid();
 
 #ifndef NO_SAMPLING
+	init_perf();
 	thread t([tid]() {
 			// auto res = open_perf("MEM_INST_RETIRED:ALL_STORES", tid);
 			 auto res = open_perf("MEM_INST_RETIRED:ALL_LOADS", tid);

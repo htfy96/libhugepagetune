@@ -7,5 +7,7 @@ struct PerfOpenResult {
 	void* mmap_buf;
 };
 
+void init_perf();
+
 PerfOpenResult open_perf(const char* event, int tid = -1);
 void run_perf(int perf_evt_fd, void* mmap_buf, std::function<void(void*)>);

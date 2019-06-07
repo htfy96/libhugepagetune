@@ -4,6 +4,8 @@
 #include "sys/types.h"
 #include "sys/mman.h"
 
+#include "util.hpp"
+
 #include <iostream>
 #include <iomanip>
 #include <mutex>
@@ -12,6 +14,7 @@
 #include <algorithm>
 #include <thread>
 #include <cstdint>
+#include <cstdlib>
 #include <unordered_map>
 #include <vector>
 #include <experimental/filesystem>
@@ -73,6 +76,19 @@ namespace {
 				it->second.fetch_add(1, std::memory_order_relaxed);
 			}
 		}
+		
+		void reset_all_map()
+		{
+			m_write.clear();
+			m_read.clear();
+			m_all_tlb_miss.clear();
+			m_huge_all_tlb_miss.clear();
+			m_all.clear();
+			m_huge_read.clear();
+			m_huge_write.clear();
+			m_huge_read_tlb_miss.clear();
+			m_huge_write_tlb_miss.clear();
+		}
 
 		void handle_result(const char* evt_name, void* addr) {
 			using namespace std;
@@ -108,6 +124,8 @@ namespace {
 					blacklist.push_back(gettid());
 			}
 			auto res = open_perf(evt_name, tid);
+			IF_DEBUG(cerr << "Open result = " << res.fd << " " << res.mmap_buf << endl;)
+			if (!res.fd) return;
 			run_perf(res.fd, res.mmap_buf, [evt_name, this](void* addr) {
 				handle_result(evt_name, addr);
 			});
@@ -116,17 +134,42 @@ namespace {
 		static void promote_to_hugepage(void* addr) {
 			using namespace std;
 			int ret = madvise(addr, 1 << HUGEPAGE_SHIFT, MADV_HUGEPAGE);
-			cerr << "Merging " << hex << addr << " |> " << dec << ret << endl;
+			IF_DEBUG(cerr << "Merging " << hex << addr << " |> " << dec << ret << endl;)
+			IF_DEBUG(if (ret < 0) perror("madvise:");)
 		}
 
 		static void unmerge_hugepage(void* addr) {
 			madvise(addr, 1 << HUGEPAGE_SHIFT, MADV_NOHUGEPAGE);
 		}
 
-		void analyze_and_promote() {
+		enum class MergePolicy {
+			ABOVE_THRESHOLD
+		} merge_policy;
+
+		static MergePolicy get_merge_policy_from_env() {
+			const char* name = getenv("HPT_MERGE_POLICY");
+			if (!name || !strcmp(name, "ABOVE_THRESHOLD"))
+				return MergePolicy::ABOVE_THRESHOLD;
+			return MergePolicy::ABOVE_THRESHOLD;
+		}
+
+		const char* current_merge_policy_str() {
+			switch (merge_policy) {
+				case MergePolicy::ABOVE_THRESHOLD:
+					return "ABOVE_THRESHOLD";
+				default:
+					return "UNKNOWN";
+			}
+		}
+
+		void analyze_and_promote_above_threshold() {
 			using namespace std;
 			int max_unpromoted = 0;
 			uintptr_t max_unpromoted_hugepage = -1;
+			
+			int merge_threshold = get_env_as_int("HPT_THRESHOLD");
+			if (merge_threshold == -1)
+				merge_threshold = 100000;
 			for (auto&& pg : m_huge_all) {
 				if (pg.second > max_unpromoted && promoted_huge_pages.find(pg.first) == promoted_huge_pages.end())
 				{
@@ -135,10 +178,20 @@ namespace {
 				}
 			}
 			if (max_unpromoted_hugepage != -1) {
-				cerr << "Merging " << hex << max_unpromoted_hugepage << " with usage cnt " << dec << max_unpromoted << endl;
+				if (max_unpromoted <= merge_threshold) return;
+				IF_DEBUG(cerr << "Merging " << hex << max_unpromoted_hugepage << " with usage cnt " << dec << max_unpromoted << endl;)
+				for (int i = 0; i < 2 * 1024 * 1024 / (4 * 1024); ++i)
+				{
+					promote_to_hugepage((void*)((max_unpromoted_hugepage << HUGEPAGE_SHIFT) + (i << PAGE_SHIFT)));
+				}
 				promoted_huge_pages.insert(max_unpromoted_hugepage);
 			}
-			
+		}
+
+		void analyze_and_promote() {
+			if (merge_policy == MergePolicy::ABOVE_THRESHOLD)
+				analyze_and_promote_above_threshold();
+			reset_all_map();
 		}
 
 		// scan 
@@ -147,7 +200,10 @@ namespace {
 			cerr << " Scanner routine launched!" << endl;
 			blacklist.push_back(gettid());
 			for (;;) {
-				std::this_thread::sleep_for(1s);
+				int sleep_time = get_env_as_int("HPT_INTERVAL");
+				if (sleep_time == -1)
+					sleep_time = 1000;
+				std::this_thread::sleep_for(std::chrono::milliseconds(sleep_time));
 				for (auto&& p : fs::directory_iterator("/proc/self/task/"))
 				{
 					std::string name = p.path().filename();
@@ -191,6 +247,8 @@ namespace {
 		public:
 		Tracer() {
 			init_perf();
+			merge_policy = get_merge_policy_from_env();
+			std::cerr << "Current merge policy: " << current_merge_policy_str() << std::endl;
 			std::thread t([this]() { scanner_routine(); });
 			t.detach();
 		}

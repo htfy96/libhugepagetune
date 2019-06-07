@@ -16,7 +16,7 @@ find_package(TBB REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Filesystem REQUIRED COMPONENTS Experimental)
 
-add_library(perf perf.hpp perf.cpp)
+add_library(perf perf.hpp perf.cpp util.cpp util.hpp)
 target_include_directories(perf PRIVATE ${LIBPFM_INCLUDE_DIR})
 target_link_libraries(perf PRIVATE ${LIBPFM_LIBRARY})
 set_property(TARGET perf PROPERTY POSITION_INDEPENDENT_CODE ON)
@@ -33,3 +33,5 @@ target_link_libraries(test-record-data PRIVATE perf)
 target_link_libraries(test-record-data PRIVATE Threads::Threads)
 add_test(test-record-data test-record-data)
 
+
+add_executable(sample-record-data sample-record-data.cpp)

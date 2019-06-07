@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.12)
 
-project(tlbautotune 
+project(hugepageautotune 
 	VERSION 0.1 
 	DESCRIPTION "A library automatically merging huge pages based on fine-grained memory access patterns"
 )
@@ -21,11 +21,11 @@ target_include_directories(perf PRIVATE ${LIBPFM_INCLUDE_DIR})
 target_link_libraries(perf PRIVATE ${LIBPFM_LIBRARY})
 set_property(TARGET perf PROPERTY POSITION_INDEPENDENT_CODE ON)
 
-add_library(tlbautotune SHARED libtlbautotune.cpp)
-target_link_libraries(tlbautotune PRIVATE perf)
-target_link_libraries(tlbautotune PRIVATE tbb)
-target_link_libraries(tlbautotune PRIVATE Threads::Threads)
-target_link_libraries(tlbautotune PRIVATE std::filesystem)
+add_library(hugepageautotune SHARED libhugepageautotune.cpp)
+target_link_libraries(hugepageautotune PRIVATE perf)
+target_link_libraries(hugepageautotune PRIVATE tbb)
+target_link_libraries(hugepageautotune PRIVATE Threads::Threads)
+target_link_libraries(hugepageautotune PRIVATE std::filesystem)
 
 enable_testing()
 add_executable(test-record-data test-record-data.cpp)

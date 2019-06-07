@@ -84,6 +84,11 @@ PerfOpenResult open_perf(const char* event, int tid) {
 	return PerfOpenResult{perf_evt_fd, dt};
 }
 
+static void cleanup(int perf_evt_fd, void* dt) {
+	close(perf_evt_fd);
+	munmap(dt, 4096 + buf_sz);
+}
+
 void run_perf(int perf_evt_fd, void* dt, function<void(void*)> f)
 {
 	pollfd fds[1] = {{
@@ -100,14 +105,23 @@ void run_perf(int perf_evt_fd, void* dt, function<void(void*)> f)
 		assert(poll(fds, 1, -1) >= 0);
 		cout << "Polled" << endl;
 		if (fds[0].revents & POLLERR)
-			assert(false && "Pollerr");
+		{
+			perror("pollerr");
+			cleanup(perf_evt_fd, dt);
+			return;
+		}
 		if (fds[0].revents & POLLHUP)
 		{
-			cout << "POLLHUP" << endl;
-			abort();
+			perror("pollhup");
+			cleanup(perf_evt_fd, dt);
+			return;
 		}
 		if (fds[0].revents & POLLNVAL)
-			assert(false && "Pollnvalid");
+		{
+			perror("pollinval");
+			cleanup(perf_evt_fd, dt);
+			return;
+		}
 		cout << dt << endl;
 		perf_event_mmap_page* desc_page_ptr = (perf_event_mmap_page*)dt;
 		perf_event_mmap_page desc = *desc_page_ptr;

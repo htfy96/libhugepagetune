@@ -1,3 +1,5 @@
 perf.data*
 /test-record-data
 *.o
+/build
+.ccls
